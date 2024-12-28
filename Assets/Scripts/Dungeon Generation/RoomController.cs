@@ -19,32 +19,33 @@ public class RoomInfo
 // Main controller class for managing rooms
 public class RoomController : MonoBehaviour
 {
-    public static RoomController instance; // Singleton instance for global access
-    public string currentWorldName = "PrimerPiso"; // Name of the current world/level
-    Room currRoom; // Reference to the current active room
-    bool once = false; // Flag for actions that should only happen once
-    public KeyValuePair<int, string>[,] map; // Map grid storing room IDs and names
-    public NavMeshSurface surface; // Reference to NavMesh for navigation
-    public bool finishedLoading = false; // Flag indicating whether room loading is complete
-    public bool finishedLoadingRooms = false; // Flag indicating whether room processing is complete
-    RoomInfo currentLoadRoomData; // Data for the room currently being loaded
-    Queue<RoomInfo> loadRoomQueue = new Queue<RoomInfo>(); // Queue for loading rooms in order
-    public List<Room> loadedRooms = new List<Room>(); // List of all loaded rooms
-    KeyValuePair<int, int> previousPosition; // Coordinates of the previous room
-    bool isLoadingRoom = false; // Flag to prevent concurrent room loading
-    bool spawnedBossRoom = false; // Flag indicating if the boss room has been spawned
-    bool updatedRooms = false; // Flag indicating if rooms have been updated
-    int ID = 1; // ID counter for rooms
-    int size; // Map grid size
-    int center; // Center of the map grid
-    Vector2Int prevPos; // Coordinates of the previous room for updates
+    public bool FinishedLoadingRooms { get { return _finishedLoadingRooms; } } // Property for checking if room processing is finished
 
-    public bool FinishedLoading { get { return finishedLoading; } } // Property for checking if loading is finished
-    public bool FinishedLoadingRooms { get { return finishedLoadingRooms; } } // Property for checking if room processing is finished
+    public static RoomController Instance; // Singleton instance for global access
+    public string CurrentWorldName = "PrimerPiso"; // Name of the current world/level
+    public KeyValuePair<int, string>[,] Map; // Map grid storing room IDs and names
+    public List<Room> LoadedRooms = new List<Room>(); // List of all loaded rooms
+
+    private bool _finishedLoadingRooms = false; // Flag indicating whether room processing is complete
+    private Room _currRoom; // Reference to the current active room
+    private bool _once = false; // Flag for actions that should only happen once
+    private RoomInfo _currentLoadRoomData; // Data for the room currently being loaded
+    private Queue<RoomInfo> _loadRoomQueue = new Queue<RoomInfo>(); // Queue for loading rooms in order
+    private KeyValuePair<int, int> _previousPosition; // Coordinates of the previous room
+    private bool _isLoadingRoom = false; // Flag to prevent concurrent room loading
+    private bool _spawnedBossRoom = false; // Flag indicating if the boss room has been spawned
+    private bool _updatedRooms = false; // Flag indicating if rooms have been updated
+    private int _id = 1; // ID counter for rooms
+    private int _size; // Map grid size
+    private int _center; // Center of the map grid
+    private Vector2Int _prevPos; // Coordinates of the previous room for updates
+    private static string START_ROOM = "Start";
+    private static string END_ROOM = "End";
+
 
     private void Awake()
     {
-        instance = this; // Set the singleton instance
+        Instance = this; // Set the singleton instance
     }
 
     private void Update()
@@ -53,16 +54,16 @@ public class RoomController : MonoBehaviour
     }
     void UpdateRoomQueue()
     {
-        if (isLoadingRoom) return; // Skip if already loading a room
+        if (_isLoadingRoom) return; // Skip if already loading a room
 
-        if (loadRoomQueue.Count == 0)
+        if (_loadRoomQueue.Count == 0)
         {
             // Handle post-loading actions
-            if (!spawnedBossRoom)
+            if (!_spawnedBossRoom)
             {
                 StartCoroutine(SpawnBossRoom(0));
             }
-            else if (!updatedRooms && spawnedBossRoom)
+            else if (!_updatedRooms && _spawnedBossRoom)
             {
                 StartCoroutine(WaitForDoorRemoval());
             }
@@ -70,29 +71,28 @@ public class RoomController : MonoBehaviour
         }
 
         // Dequeue and start loading the next room
-        currentLoadRoomData = loadRoomQueue.Dequeue();
-        isLoadingRoom = true;
-        StartCoroutine(LoadRoomRoutine(currentLoadRoomData));
+        _currentLoadRoomData = _loadRoomQueue.Dequeue();
+        _isLoadingRoom = true;
+        StartCoroutine(LoadRoomRoutine(_currentLoadRoomData));
     }
 
     // Waits before removing unconnected doors in rooms
     IEnumerator WaitForDoorRemoval()
     {
-        updatedRooms = true;
+        _updatedRooms = true;
         yield return new WaitForSeconds(1f);
-        foreach (Room room in loadedRooms)
+        foreach (Room room in LoadedRooms)
         {
             room.RemoveUnconnectedDoors(); // Removes unnecessary doors
         }
-        finishedLoadingRooms = true;
-        InstantiateRandomNFT.SummonNFT(); // Spawn NFTs (if applicable)
+        _finishedLoadingRooms = true;
         StartCoroutine(RoomCoroutine());
     }
 
     // Deletes planes used for navigation after room loading
     void DeletePlanes()
     {
-        foreach (Room room in loadedRooms)
+        foreach (Room room in LoadedRooms)
         {
             if (room.plane != null)
             {
@@ -104,28 +104,28 @@ public class RoomController : MonoBehaviour
     // Spawns the boss room
     public IEnumerator SpawnBossRoom(int i)
     {
-        spawnedBossRoom = true;
+        _spawnedBossRoom = true;
         yield return new WaitForSeconds(0.5f);
 
-        if (loadRoomQueue.Count == 0)
+        if (_loadRoomQueue.Count == 0)
         {
             // Logic to replace a regular room with the boss room
-            Room bossRoom = loadedRooms[loadedRooms.Count - (1 + i)];
+            Room bossRoom = LoadedRooms[LoadedRooms.Count - (1 + i)];
             Room tempRoom = new Room(bossRoom.X, bossRoom.Y) { RealY = bossRoom.RealY };
             Destroy(bossRoom.gameObject);
 
-            var roomToRemove = loadedRooms.Single(r => r.X == tempRoom.X && r.Y == tempRoom.Y);
-            loadedRooms.Remove(roomToRemove);
+            var roomToRemove = LoadedRooms.Single(r => r.X == tempRoom.X && r.Y == tempRoom.Y);
+            LoadedRooms.Remove(roomToRemove);
 
             if (roomToRemove.nameRoom == "BigRoom")
             {
                 ClearRoomFromMap(tempRoom);
                 Vector2Int endRoomPosition = DetermineEndRoomPosition(tempRoom);
-                LoadRoom("End", endRoomPosition.x, endRoomPosition.y, Vector2Int.zero);
+                LoadEndRoom(endRoomPosition.x, endRoomPosition.y);
             }
             else
             {
-                LoadRoom("End", tempRoom.X, tempRoom.RealY, Vector2Int.zero);
+                LoadEndRoom(tempRoom.X, tempRoom.RealY);
             }
 
             StartCoroutine(RoomCoroutine());
@@ -137,19 +137,19 @@ public class RoomController : MonoBehaviour
     // Clears a room from the map grid
     private void ClearRoomFromMap(Room tempRoom)
     {
-        map[tempRoom.X, tempRoom.RealY] = new KeyValuePair<int, string>(0, "");
-        map[tempRoom.X + 1, tempRoom.RealY] = new KeyValuePair<int, string>(0, "");
-        map[tempRoom.X + 1, tempRoom.RealY + 1] = new KeyValuePair<int, string>(0, "");
-        map[tempRoom.X, tempRoom.RealY + 1] = new KeyValuePair<int, string>(0, "");
+        Map[tempRoom.X, tempRoom.RealY] = new KeyValuePair<int, string>(0, "");
+        Map[tempRoom.X + 1, tempRoom.RealY] = new KeyValuePair<int, string>(0, "");
+        Map[tempRoom.X + 1, tempRoom.RealY + 1] = new KeyValuePair<int, string>(0, "");
+        Map[tempRoom.X, tempRoom.RealY + 1] = new KeyValuePair<int, string>(0, "");
     }
 
     // Determines where to place the end room
     private Vector2Int DetermineEndRoomPosition(Room tempRoom)
     {
-        bool canPlaceAbove = tempRoom.RealY - 1 >= 0 && map[tempRoom.X, tempRoom.RealY - 1].Key == 0;
-        bool canPlaceBelow = tempRoom.RealY + 1 < map.GetLength(1) && map[tempRoom.X, tempRoom.RealY + 1].Key == 0;
-        bool canPlaceLeft = tempRoom.X - 1 >= 0 && map[tempRoom.X - 1, tempRoom.RealY].Key == 0;
-        bool canPlaceRight = tempRoom.X + 2 < map.GetLength(0) && map[tempRoom.X + 2, tempRoom.RealY].Key == 0;
+        bool canPlaceAbove = tempRoom.RealY - 1 >= 0 && Map[tempRoom.X, tempRoom.RealY - 1].Key == 0;
+        bool canPlaceBelow = tempRoom.RealY + 1 < Map.GetLength(1) && Map[tempRoom.X, tempRoom.RealY + 1].Key == 0;
+        bool canPlaceLeft = tempRoom.X - 1 >= 0 && Map[tempRoom.X - 1, tempRoom.RealY].Key == 0;
+        bool canPlaceRight = tempRoom.X + 2 < Map.GetLength(0) && Map[tempRoom.X + 2, tempRoom.RealY].Key == 0;
 
         if (canPlaceAbove) return new Vector2Int(tempRoom.X, tempRoom.RealY - 1);
         if (canPlaceBelow) return new Vector2Int(tempRoom.X, tempRoom.RealY + 1);
@@ -164,118 +164,159 @@ public class RoomController : MonoBehaviour
     {
         yield return new WaitForSeconds(0.5f);
         DeletePlanes();
-        finishedLoading = true;
     }
 
     // Initializes the map grid and sets the center position
-    public void SetSize(int size)
+    public void InitializeGrid(int size)
     {
-        this.size = size; // Set the grid size
-        center = (size / 2); // Calculate the center of the grid
-        map = new KeyValuePair<int, string>[size, size]; // Initialize the map grid
+        _size = size; // Set the grid size
+        _center = (size / 2); // Calculate the center of the grid
+        Map = new KeyValuePair<int, string>[size, size]; // Initialize the map grid
     }
 
     // Loads a room into the map grid
-    public void LoadRoom(string name, int x, int y, Vector2Int previousPos)
+    public void LoadRoom(string name, int maxHorizontalStep, int maxVerticalStep, int horizontalMovement, int verticalMovement, Vector2Int previousPos)
     {
-        prevPos = previousPos; // Store the previous position for reference
+        _prevPos = previousPos; // Store the previous position for reference
         RoomInfo newRoomData = new RoomInfo(); // Create a new room data object
-
-        // Handle specific room types
-        if (name == "Start" || name == "End") // Fixed rooms like Start and End
-        {
-            LoadFixedRoom(name, x, y, ref newRoomData); // Load the fixed room
-        }
-        else if (name == "Enemy" || name == "Empty") // Dynamic rooms
-        {
-            LoadDynamicRoom(name, x, y, ref newRoomData, 2, 1); // Load with specific steps
-        }
-        else if (name == "BigRoom") // Large rooms requiring more space
-        {
-            LoadDynamicRoom(name, x, y, ref newRoomData, 2, 2); // Load with larger steps
-        }
+        LoadDynamicRoom(name, horizontalMovement, verticalMovement, ref newRoomData, maxHorizontalStep, maxVerticalStep);
     }
 
-    // Loads fixed rooms like Start and End into specific positions
-    private void LoadFixedRoom(string name, int x, int y, ref RoomInfo newRoomData)
+    //Loads the starting room
+    public void LoadStartRoom()
     {
-        int startX = name == "Start" ? center : x; // Center the Start room
-        int startY = name == "Start" ? center : y;
+        RoomInfo newRoomData = new RoomInfo();
+        Map[_center, _center] = new KeyValuePair<int, string>(_id, START_ROOM);
+        Map[_center + 1, _center] = new KeyValuePair<int, string>(_id, START_ROOM);
+        _previousPosition = new KeyValuePair<int, int>(_center, _center);
 
-        map[startX, startY] = new KeyValuePair<int, string>(ID, name); // Assign ID and name
-        map[startX + 1, startY] = new KeyValuePair<int, string>(ID, name); // Handle multi-tile rooms
-        previousPosition = new KeyValuePair<int, int>(startX, startY);
-
-        FillRoomData(ref newRoomData, name, startX, startY, name == "Start"); // Populate room data
-        loadRoomQueue.Enqueue(newRoomData); // Add the room to the loading queue
+        FillRoomData(ref newRoomData, START_ROOM, _center, _center, true);
+        _loadRoomQueue.Enqueue(newRoomData);
     }
 
-    // Handles dynamic room placement with collision checks
-    private void LoadDynamicRoom(string name, int x, int y, ref RoomInfo newRoomData, int stepX, int stepY)
+    private void LoadEndRoom(int x, int y)
+    {
+        RoomInfo newRoomData = new RoomInfo();
+        Map[x, y] = new KeyValuePair<int, string>(_id, END_ROOM);
+        Map[x + 1, y] = new KeyValuePair<int, string>(_id, END_ROOM);
+        _previousPosition = new KeyValuePair<int, int>(x, y);
+
+        FillRoomData(ref newRoomData, END_ROOM, x, y, false);
+        _loadRoomQueue.Enqueue(newRoomData);
+    }
+
+    private void LoadDynamicRoom(string name, int horizontalMovement, int verticalMovement, ref RoomInfo newRoomData, int maxHorizontalStep, int maxVerticalStep)
     {
         int i = 0;
         // Check if the room placement is blocked
-        while (IsRoomBlocked(x, y, i, stepX, stepY))
+        while (IsRoomBlocked(horizontalMovement, verticalMovement, i, maxHorizontalStep, maxVerticalStep))
         {
             i++;
             if (i > 8) return; // Prevent infinite loops
         }
 
-        if (CanPlaceRoom(x, y, i, stepX, stepY)) // Check if the room can be placed
-        {
-            PlaceRoom(name, x, y, i, stepX, stepY, ref newRoomData); // Place the room
-        }
+        PlaceRoom(name, horizontalMovement, verticalMovement, i, maxHorizontalStep, maxVerticalStep, ref newRoomData);//Place the room
     }
 
-    // Checks if the room placement is blocked by existing rooms
-    private bool IsRoomBlocked(int x, int y, int i, int stepX, int stepY)
+    private bool IsRoomBlocked(int horizontalMovement, int verticalMovement, int i, int maxHorizontalStep, int maxVerticalStep)
     {
-        // Check boundaries and existing rooms
-        if (previousPosition.Key + ((stepX + i) * x) >= 9 || previousPosition.Key + ((stepX + i) * x) < 0 ||
-            previousPosition.Value + ((stepY + i) * y) >= 9 || previousPosition.Value + ((stepY + i) * y) < 0)
+        //Check if the maximum length of the room exceeds the size of the map.
+        if (_previousPosition.Key + ((maxHorizontalStep + i) * horizontalMovement) >= 9 || _previousPosition.Key + ((maxHorizontalStep + i) * horizontalMovement) < 0 ||
+                _previousPosition.Value + ((maxVerticalStep + i) * verticalMovement) >= 9 || _previousPosition.Value + ((maxVerticalStep + i) * verticalMovement) < 0)
             return true;
+        else
+        {
+            //Determine if the step starts at 0 or 1 based on the type of movement.
+            for (int verticalStep = 1 * Mathf.Abs(verticalMovement); verticalStep <= (verticalMovement != 0 ? maxVerticalStep : maxVerticalStep-1); verticalStep++)
+            {
+                for (int horizontalStep = 1 * Mathf.Abs(horizontalMovement); horizontalStep <= (horizontalMovement != 0 ? maxHorizontalStep : maxHorizontalStep-1); horizontalStep++)
+                {
+                    //Create new key and Value
+                    int newKey = _previousPosition.Key + ((horizontalStep+i) * horizontalMovement);
+                    int newValue = _previousPosition.Value + ((verticalStep+i) * verticalMovement);
 
-        // Additional checks for overlapping rooms
-        if (map[previousPosition.Key + ((1 + i) * x), previousPosition.Value].Key != 0 ||
-            map[previousPosition.Key, previousPosition.Value + ((1 + i) * y)].Key != 0)
-            return true;
+                    // Check for horizontal/vertical collisions
+                    if (Map[newKey, newValue].Key != 0)
+                        return true;
 
+                    // Check diagonal positions if horizontalMovement is 0 (vertical room movement)
+                    if (horizontalMovement == 0)
+                    {
+                        // Check adjacent horizontal positions at the current vertical step
+                        if (Map[_previousPosition.Key + horizontalStep, newValue].Key != 0)
+                            return true;
+                    }
+                    // Check diagonal positions if verticalMovement is 0 (horizontal room movement)
+                    else
+                    {
+                        if (Map[newKey, _previousPosition.Value+verticalStep].Key != 0)
+                            return true;
+                    }
+                }
+            }
+
+        }
         return false; // No blockage
     }
 
-    // Checks if the room can be placed in the specified position
-    private bool CanPlaceRoom(int x, int y, int i, int stepX, int stepY)
+    //Place room
+    private void PlaceRoom(string name, int horizontalMovement, int verticalMovement, int i, int maxHorizontalStep, int maxVerticalStep, ref RoomInfo newRoomData)
     {
-        return previousPosition.Key + ((stepX + i) * x) < 9 &&
-               previousPosition.Value + ((stepY + i) * y) < 9;
+        for (int verticalStep = 1 * Mathf.Abs(verticalMovement); verticalStep <= (verticalMovement != 0 ? maxVerticalStep : maxVerticalStep - 1); verticalStep++)
+        {
+            for (int horizontalStep = 1 * Mathf.Abs(horizontalMovement); horizontalStep <= (horizontalMovement != 0 ? maxHorizontalStep : maxHorizontalStep - 1); horizontalStep++)
+            {
+                //Creates new key and value as in the check but assigns them to the matrix
+                int newKey = _previousPosition.Key + ((horizontalStep + i) * horizontalMovement);
+                int newValue = _previousPosition.Value + ((verticalStep + i) * verticalMovement);
+                Map[newKey, newValue] = new KeyValuePair<int, string>(_id, name);
+
+                //Assigns diagonal IDs in the matrix
+                if (horizontalMovement == 0)
+                {
+                    Map[_previousPosition.Key + horizontalStep, newValue] = new KeyValuePair<int, string>(_id, name);
+                }
+                else
+                {
+                    Map[newKey, _previousPosition.Value + verticalStep] = new KeyValuePair<int, string>(_id, name);
+                }
+            }
+        }
+        //If movement positive in the matrix assign previous position to the position to the right or directly below, reference position is the leftmost upper corner of the room.
+        if (verticalMovement > 0 || horizontalMovement > 0)
+        {
+            _previousPosition = new KeyValuePair<int, int>(_previousPosition.Key + ((1 + i) * horizontalMovement), _previousPosition.Value + (1 + i) * verticalMovement);
+        }
+        //If movement is negative in the matrix assign previous position two positions to the left or two positions above, making sure reference point persists in the leftmost upper corner.
+        else
+        {
+            _previousPosition = new KeyValuePair<int, int>(_previousPosition.Key + ((maxHorizontalStep + i) * horizontalMovement), _previousPosition.Value + (maxVerticalStep + i) * verticalMovement);
+        }
+
+        FillRoomData(ref newRoomData, name, _previousPosition.Key, _previousPosition.Value,false);
+        _loadRoomQueue.Enqueue(newRoomData);
     }
 
-    // Places the room into the map grid and updates its data
-    private void PlaceRoom(string name, int x, int y, int i, int stepX, int stepY, ref RoomInfo newRoomData)
-    {
-        map[previousPosition.Key + ((1 + i) * x), previousPosition.Value] = new KeyValuePair<int, string>(ID, name);
-        map[previousPosition.Key, previousPosition.Value + ((1 + i) * y)] = new KeyValuePair<int, string>(ID, name);
-
-        FillRoomData(ref newRoomData, name, previousPosition.Key, previousPosition.Value, false);
-        loadRoomQueue.Enqueue(newRoomData);
-    }
-
-    // Fills room data for initialization
+    //Fill new room data
     private void FillRoomData(ref RoomInfo roomData, string name, int x, int y, bool isStart)
     {
-        roomData.name = name;
+        roomData.name = name;        
         roomData.x = x;
-        roomData.y = isStart ? y : size - 1 - y;
+        if (isStart)
+            roomData.y = y;
+        else
+            roomData.y = _size - 1 - y;
         roomData.yMatriz = y;
-        roomData.id = ID++;
+        roomData.id = _id;
+        _id++;
     }
 
     // Coroutine for loading a room asynchronously
     IEnumerator LoadRoomRoutine(RoomInfo info)
     {
-        string roomName = currentWorldName + info.name;
+        string roomName = CurrentWorldName + info.name;
         AsyncOperation loadRoom = SceneManager.LoadSceneAsync(roomName, LoadSceneMode.Additive);
-        while (!loadRoom.isDone)
+        while (loadRoom.isDone == false)
         {
             yield return null;
         }
@@ -283,97 +324,65 @@ public class RoomController : MonoBehaviour
     public void RegisterRoom(Room room)
     {
         // Check if the room does not already exist at the specified coordinates
-        if (!DoesRoomExist(currentLoadRoomData.x, currentLoadRoomData.y))
+        if (!DoesRoomExist(_currentLoadRoomData.x, _currentLoadRoomData.y))
         {
-            // Handle "End" room special case (currently does nothing)
-            if (currentLoadRoomData.name == "End")
+            //calculations to properly place the rooms visually
+            if (_currentLoadRoomData.name == "End")
             {
-            }
 
-            // Set position for "Start" room
-            if (currentLoadRoomData.name == "Start")
-            {
-                room.transform.position = new Vector3(currentLoadRoomData.x * 15.9f, currentLoadRoomData.y * 20f, 0);
             }
-            // Set position for normal rooms ("Empty", "Enemy", "End")
-            else if (currentLoadRoomData.name == "Empty" || currentLoadRoomData.name == "Enemy" || currentLoadRoomData.name == "End")
+            if (_currentLoadRoomData.name == "Start")
             {
-                room.transform.position = new Vector3(
-                    currentLoadRoomData.x * 15.9f,
-                    (currentLoadRoomData.y * 20f) + (8 - (2 * currentLoadRoomData.y)),
-                    0);
+                room.transform.position = new Vector3(_currentLoadRoomData.x * 15.9f, _currentLoadRoomData.y * (20f), 0);
             }
-            // Set position for "BigRoom" rooms
-            else if (currentLoadRoomData.name == "BigRoom")
+            else if (_currentLoadRoomData.name == "Empty" || _currentLoadRoomData.name == "Enemy" || _currentLoadRoomData.name == "End")
             {
-                room.transform.position = new Vector3(
-                    currentLoadRoomData.x * 15.9f,
-                    (currentLoadRoomData.y * 18f) - 2f,
-                    0);
+                room.transform.position = new Vector3
+                (_currentLoadRoomData.x * 15.9f, (_currentLoadRoomData.y * (20f)) + (8 - (2 * _currentLoadRoomData.y)), 0);
             }
-            // Default position for other rooms
+            else if (_currentLoadRoomData.name == "BigRoom")
+            {
+                room.transform.position = new Vector3(_currentLoadRoomData.x * 15.9f, ((_currentLoadRoomData.y * 18f) - 2f), 0);
+            }
             else
             {
-                room.transform.position = new Vector3(currentLoadRoomData.x * 15.9f, currentLoadRoomData.y * 18f, 0);
+                room.transform.position = new Vector3(_currentLoadRoomData.x * 15.9f, _currentLoadRoomData.y * 18f, 0);
             }
-
-            // Set room properties
-            room.X = currentLoadRoomData.x;
-            room.Y = currentLoadRoomData.y;
-            room.id = currentLoadRoomData.id;
-            room.RealY = currentLoadRoomData.yMatriz;
-            room.name = $"{currentWorldName} {room.id}-{currentLoadRoomData.name} {room.X},{room.Y}";
-            room.transform.parent = transform; // Set this room as a child of the RoomController
-
-            isLoadingRoom = false; // Indicate that loading for this room is finished
-
-            // Set the initial room for the camera if this is the first room
-            if (loadedRooms.Count == 0)
+            room.X = _currentLoadRoomData.x;
+            room.Y = _currentLoadRoomData.y;
+            room.id = _currentLoadRoomData.id;
+            room.RealY = _currentLoadRoomData.yMatriz;
+            room.name = CurrentWorldName + " " + room.id + "-" + _currentLoadRoomData.name + " " + room.X + "," + room.Y;
+            room.transform.parent = transform;
+            _isLoadingRoom = false;
+            if (LoadedRooms.Count == 0)
             {
                 CameraController.instance.currRoom = room;
             }
-
-            loadedRooms.Add(room); // Add the room to the list of loaded rooms
+            LoadedRooms.Add(room);
         }
         else
         {
-            // If the room is "End", mark it as not loading anymore
-            if (currentLoadRoomData.name == "End")
+            if (_currentLoadRoomData.name == "End")
             {
-                isLoadingRoom = false;
+                _isLoadingRoom = false;
             }
         }
     }
-    public string GetRandomRoomName()
-    {
-        string[] possibleRooms = new string[] { "Empty", "Enemy", "BigRoom" };
-        return possibleRooms[Random.Range(0, possibleRooms.Length)];
-    }
-
-    // Checks if a room exists at the specified coordinates
     public bool DoesRoomExist(int x, int y)
     {
-        return loadedRooms.Find(item => item.X == x && item.Y == y) != null;
+        return LoadedRooms.Find(item => item.X == x && item.Y == y) != null;
     }
-
-    // Finds and returns a room object at the specified coordinates
     public Room FindRoom(int x, int y)
     {
-        return loadedRooms.Find(item => item.X == x && item.Y == y);
+        return LoadedRooms.Find(item => item.X == x && item.Y == y);
     }
 
-    // Handles player entering a new room
+    //Handle behaviour when player enters a room
     public void OnPlayerEnterRoom(Room room)
     {
-        // Deactivate walls of the previous room
-        if (once)
-        {
-            ChangeWalls(currRoom, false);
-        }
-        once = true;
-
-        // Enable or disable camera follow based on room type
-        if (room.nameRoom == "BigRoom" || room.nameRoom == "LRoom")
+        //Have camera follow player around depending on the size of the room
+        if (room.nameRoom == "BigRoom")
         {
             CameraController.instance.followPlayer = true;
         }
@@ -381,130 +390,76 @@ public class RoomController : MonoBehaviour
         {
             CameraController.instance.followPlayer = false;
         }
-
-        CameraController.instance.currRoom = room; // Update the current room for the camera
-        currRoom = room; // Update the reference to the current room
-        ChangeWalls(room, true); // Activate walls for the new room
-        StartCoroutine(RoomCoroutine()); // Start room update coroutine
-        AudioManager.instance.ReproduceRoomAudio(currRoom.soundOnEnter); // Play room entry sound
+        CameraController.instance.currRoom = room;
+        _currRoom = room;
+        StartCoroutine(RoomCoroutine());
+        AudioManager.instance.ReproduceRoomAudio(_currRoom.soundOnEnter);
     }
     public IEnumerator RoomCoroutine()
     {
         yield return new WaitForSeconds(0.2f);
-        UpdateRooms(); // Update all rooms
+        UpdateRooms();
     }
 
-    // Updates doors and interactions for all rooms
+    //Open and close doors, colliders and rendering based on the position of the player respective to the rooms
     public void UpdateRooms()
     {
-        foreach (Room room in loadedRooms)
+        foreach (Room room in LoadedRooms)
         {
-            Transform[] enemies = room.FindComponentsInChildrenWithTag<Transform>("Enemy"); // Find enemies in the room
-
-            if (currRoom != room) // For rooms other than the current room
+            Transform[] enemies = room.FindComponentsInChildrenWithTag<Transform>("Enemy");
+            if (_currRoom != room)
             {
-                foreach (Door door in room.GetComponentsInChildren<Door>())
-                {
-                    door.colliderDoor.isTrigger = true; // Set doors to triggers
-                    if (door.doorActive)
-                    {
-                        door.doorCollider.SetActive(false); // Deactivate door colliders
-                    }
-                    Physics2D.IgnoreCollision(door.colliderDoor, PlayerController.instance.GetComponent<Collider2D>(), false);
-                }
-            }
-            else // For the current room
-            {
-                if (enemies.Length > 0) // If enemies exist
-                {
-                    foreach (Door door in room.GetComponentsInChildren<Door>())
-                    {
-                        if (door.doorActive)
-                        {
-                            door.doorCollider.SetActive(true); // Activate door colliders
-                            door.colliderDoor.isTrigger = false; // Remove trigger
-                        }
-                        Physics2D.IgnoreCollision(door.colliderDoor, PlayerController.instance.GetComponent<Collider2D>(), true);
-                    }
-                }
-                else // If no enemies exist
+                if (enemies.Length != 0)
                 {
                     foreach (Door door in room.GetComponentsInChildren<Door>())
                     {
                         door.colliderDoor.isTrigger = true;
                         if (door.doorActive)
                         {
-                            door.doorCollider.SetActive(false); // Deactivate door colliders
+                            door.doorCollider.SetActive(false);
+                        }
+                        Physics2D.IgnoreCollision(door.colliderDoor, PlayerController.instance.GetComponent<Collider2D>(), false);
+                    }
+                }
+                else
+                {
+                    foreach (Door door in room.GetComponentsInChildren<Door>())
+                    {
+                        door.colliderDoor.isTrigger = true;
+                        if (door.doorActive)
+                        {
+                            door.doorCollider.SetActive(false);
                         }
                         Physics2D.IgnoreCollision(door.colliderDoor, PlayerController.instance.GetComponent<Collider2D>(), false);
                     }
                 }
             }
-        }
-    }
-
-    public void ChangeWalls(Room room, bool on)
-    {
-        // Define sorting layers based on the "on" parameter
-        string wallLayer = on ? "InRoomWall" : "Walls";
-        string horizontalDoorLayer = on ? "InRoomHorizontalDoor" : "HorizontalDoors";
-        string doorLayer = on ? "InRoomDoor" : "Doors";
-        string closeFullDoorLayer = on ? "InRoomCloseFullDoor" : "CloseFullDoor";
-
-        // Update wall layers
-        var walls = new[] { room.UpperWall, room.BottomWall, room.LeftWall, room.RightWall };
-        SetSortingLayerForObjects(walls, wallLayer);
-
-        // Update doors with predefined sorting layers
-        var horizontalDoors = new[]
-        {
-        room.TopLeftLeftDoorObject,
-        room.TopLeftRightDoorObject,
-        room.TopRightRightDoorObject,
-        room.BottomLeftLeftDoorObject,
-        room.BottomRightRightDoorObject
-    };
-        SetSortingLayerForObjects(horizontalDoors, horizontalDoorLayer);
-
-        var verticalDoors = new[]
-        {
-        room.TopLeftUpDoorObject,
-        room.TopLeftDownDoorObject,
-        room.TopRightDownDoorObject,
-        room.TopRightUpDoorObject,
-        room.BottomLeftDownDoorObject,
-        room.BottomRightDownDoorObject,
-        room.BottomRightUpDoorObject
-    };
-        SetSortingLayerForObjects(verticalDoors, doorLayer);
-
-        // Update "NoDoor" objects with the close full door layer
-        var noDoors = new[]
-        {
-        room.TopLeftLeftDoorObjectNoDoor,
-        room.TopLeftRightDoorObjectNoDoor,
-        room.TopLeftUpDoorObjectNoDoor,
-        room.TopLeftDownDoorObjectNoDoor,
-        room.TopRightDownDoorObjectNoDoor,
-        room.TopRightRightDoorObjectNoDoor,
-        room.TopRightUpDoorObjectNoDoor,
-        room.BottomLeftLeftDoorObjectNoDoor,
-        room.BottomLeftDownDoorObjectNoDoor,
-        room.BottomRightRightDoorObjectNoDoor,
-        room.BottomRightDownDoorObjectNoDoor,
-        room.BottomRightUpDoorObjectNoDoor
-    };
-        SetSortingLayerForObjects(noDoors, closeFullDoorLayer);
-    }
-
-    // Helper method to update sorting layers for multiple objects
-    private void SetSortingLayerForObjects(GameObject[] objects, string sortingLayer)
-    {
-        foreach (var obj in objects)
-        {
-            if (obj != null)
+            else
             {
-                obj.GetComponent<Renderer>().sortingLayerID = SortingLayer.NameToID(sortingLayer);
+                if (enemies.Length > 0)
+                {
+                    foreach (Door door in room.GetComponentsInChildren<Door>())
+                    {
+                        if (door.doorActive)
+                        {
+                            door.doorCollider.SetActive(true);
+                            door.colliderDoor.isTrigger = false;
+                        }
+                        Physics2D.IgnoreCollision(door.colliderDoor, PlayerController.instance.GetComponent<Collider2D>(), true);
+                    }
+                }
+                else
+                {
+                    foreach (Door door in room.GetComponentsInChildren<Door>())
+                    {
+                        door.colliderDoor.isTrigger = true;
+                        if (door.doorActive)
+                        {
+                            door.doorCollider.SetActive(false);
+                        }
+                        Physics2D.IgnoreCollision(door.colliderDoor, PlayerController.instance.GetComponent<Collider2D>(), false);
+                    }
+                }
             }
         }
     }
